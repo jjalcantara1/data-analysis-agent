@@ -34,3 +34,5 @@ dist/
 
 # Cache
 *.pytest_cache/
+
+node_modules/
