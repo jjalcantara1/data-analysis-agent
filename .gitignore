@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual environments
+venv/
+.env/
+.env.bak/
+*.env
+
+# IDE / Editor
+.vscode/
+.idea/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Logs and artifacts
+logs/
+artifacts/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+build/
+dist/
+*.egg-info/
+
+# Cache
+*.pytest_cache/
