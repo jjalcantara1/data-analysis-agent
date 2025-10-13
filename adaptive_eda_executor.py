@@ -4,94 +4,120 @@ import seaborn as sns
 import os
 import re
 from collections import Counter
+import numpy as np
+
 
 sns.set(style="whitegrid")
 
-def adaptive_eda_executor(df: pd.DataFrame, eda_plan: dict, output_dir="eda_outputs"):
-    """
-    Dynamically executes EDA tasks from Gemini recommendations.
-    """
+def top_n_frequency(df, col, n=10, multi_sep=None):
+    """Return top-N most frequent values without aggregating 'Other'."""
+    if col not in df.columns:
+        return pd.Series(dtype=int)
+    
+    series = df[col].dropna().astype(str)
+    if multi_sep:
+        exploded = series.str.split(multi_sep).apply(lambda x: [v.strip() for v in x]).explode()
+    else:
+        exploded = series
+    
+    counts = exploded.value_counts()
+    top_counts = counts.head(n)
+    return top_counts  
+
+
+def adaptive_eda_executor(df: pd.DataFrame, eda_plan: dict, output_dir="eda_outputs", top_n=10):
     os.makedirs(output_dir, exist_ok=True)
     
     for task in eda_plan.get("recommended_eda", []):
         task_type = task["type"].lower()
-        reason = task.get("reason", "")
-        print(f"[Adaptive EDA] Executing: {task['type']} ({reason})")
+        print(f"[Adaptive EDA] Executing: {task['type']}")
         
         try:
+            # Missing values
             if "missing" in task_type:
                 df.isna().sum().to_csv(os.path.join(output_dir, "missing_values.csv"))
 
-            elif "duplicate" in task_type:
-                df.duplicated().to_csv(os.path.join(output_dir, "duplicate_rows.csv"))
+            # Frequency / Top-N categorical
+            elif "top-n" in task_type or "frequency" in task_type or "category" in task_type:
+                for col in task.get("columns", []):
+                    multi_sep = "," if col in ["cast", "listed_in"] else None
+                    top_freq = top_n_frequency(df, col, n=top_n, multi_sep=multi_sep)
+                    top_freq.to_csv(os.path.join(output_dir, f"{col}_top_{top_n}.csv"))
 
-            elif "descriptive" in task_type or "summary stats" in task_type:
-                numeric_cols = df.select_dtypes(include="number").columns
-                df[numeric_cols].describe().to_csv(os.path.join(output_dir, "descriptive_stats.csv"))
+                    plt.figure(figsize=(8, max(4, len(top_freq)/2)))
+                    sns.barplot(x=top_freq.values, y=top_freq.index, orient="h")
+                    plt.title(f"Top {top_n} {col}")
+                    plt.tight_layout()
+                    plt.savefig(os.path.join(output_dir, f"{col}_top_{top_n}.png"))
+                    plt.close()
 
-            elif "frequency" in task_type:
-                # extract column name if specified in task text
-                col_candidates = re.findall(r"'(.*?)'", task["type"])
-                for col in col_candidates:
-                    if col in df.columns:
-                        freq = df[col].value_counts()
-                        freq.to_csv(os.path.join(output_dir, f"{col}_frequency.csv"))
-                        plt.figure(figsize=(8, 5))
-                        sns.barplot(x=freq.index, y=freq.values)
-                        plt.xticks(rotation=45)
-                        plt.title(f"Frequency Distribution: {col}")
-                        plt.tight_layout()
-                        plt.savefig(os.path.join(output_dir, f"{col}_frequency.png"))
-                        plt.close()
-
+            # Numeric distributions
             elif "distribution" in task_type or "histogram" in task_type or "box plot" in task_type:
-                numeric_cols = df.select_dtypes(include="number").columns
-                for col in numeric_cols:
-                    plt.figure(figsize=(8, 5))
-                    sns.histplot(df[col].dropna(), kde=True, bins=30)
+                for col in task.get("columns", []):
+                    numeric = pd.to_numeric(df[col], errors="coerce")
+                    plt.figure(figsize=(8,5))
+                    sns.histplot(numeric.dropna(), kde=True, bins=30)
                     plt.title(f"Distribution of {col}")
                     plt.tight_layout()
                     plt.savefig(os.path.join(output_dir, f"{col}_distribution.png"))
                     plt.close()
 
+            # Scatter / relationships
             elif "relationship" in task_type or "scatter" in task_type:
-                numeric_cols = df.select_dtypes(include="number").columns
-                # try to parse column names from task description
-                cols = re.findall(r"'(.*?)'", task["type"])
-                for i, x_col in enumerate(cols):
-                    if x_col in df.columns and i+1 < len(cols) and cols[i+1] in df.columns:
-                        y_col = cols[i+1]
-                        plt.figure(figsize=(8, 5))
-                        sns.scatterplot(x=x_col, y=y_col, data=df)
-                        plt.title(f"{y_col} vs {x_col}")
-                        plt.tight_layout()
-                        plt.savefig(os.path.join(output_dir, f"{y_col}_vs_{x_col}.png"))
-                        plt.close()
+                cols = task.get("columns", [])
+                if len(cols) >= 2:
+                    plt.figure(figsize=(8,5))
+                    sns.scatterplot(x=cols[0], y=cols[1], data=df)
+                    plt.title(f"{cols[1]} vs {cols[0]}")
+                    plt.tight_layout()
+                    plt.savefig(os.path.join(output_dir, f"{cols[1]}_vs_{cols[0]}.png"))
+                    plt.close()
 
-            elif "category-wise" in task_type or "box plot" in task_type:
-                # extract numeric and categorical columns dynamically
-                cat_cols = df.select_dtypes(include="object").columns
-                num_cols = df.select_dtypes(include="number").columns
-                for cat_col in cat_cols:
-                    for num_col in num_cols:
-                        plt.figure(figsize=(10, 5))
-                        sns.boxplot(x=cat_col, y=num_col, data=df)
-                        plt.xticks(rotation=45)
-                        plt.title(f"{num_col} by {cat_col}")
-                        plt.tight_layout()
-                        plt.savefig(os.path.join(output_dir, f"{num_col}_by_{cat_col}.png"))
-                        plt.close()
+            # Temporal / date analysis
+            # Temporal / date analysis with separate year and month
+            elif "temporal" in task_type or any("date" in c for c in task.get("columns", [])):
+                for col in task.get("columns", []):
+                    if col in df.columns:
+                        dates = pd.to_datetime(df[col], errors="coerce").dropna()
+                        if not dates.empty:
+                            # Yearly trend
+                            yearly_counts = dates.dt.year.value_counts().sort_index()
+                            plt.figure(figsize=(10,4))
+                            yearly_counts.plot(kind="bar")
+                            plt.title(f"Content additions per year ({col})")
+                            plt.xlabel("Year")
+                            plt.ylabel("Count")
+                            plt.tight_layout()
+                            plt.savefig(os.path.join(output_dir, f"{col}_yearly_trend.png"))
+                            plt.close()
 
+                            # Monthly trend (seasonal pattern)
+                            month_counts = dates.dt.month.value_counts().sort_index()
+                            plt.figure(figsize=(10,4))
+                            month_counts.plot(kind="bar")
+                            plt.title(f"Content additions per month ({col})")
+                            plt.xlabel("Month")
+                            plt.ylabel("Count")
+                            plt.xticks(ticks=range(12), labels=[
+                                "Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"
+                            ], rotation=45)
+                            plt.tight_layout()
+                            plt.savefig(os.path.join(output_dir, f"{col}_monthly_trend.png"))
+                            plt.close()
+
+
+            # Text analysis
             elif "text analysis" in task_type:
-                text_cols = df.select_dtypes(include="object").columns
-                for col in text_cols:
-                    all_text = " ".join(df[col].dropna().astype(str).tolist())
-                    words = re.findall(r"\w+", all_text.lower())
-                    counter = Counter(words)
-                    most_common = counter.most_common(50)
-                    pd.DataFrame(most_common, columns=["word", "count"]).to_csv(
-                        os.path.join(output_dir, f"{col}_top_words.csv"), index=False
-                    )
+                for col in task.get("columns", []):
+                    if col in df.columns:
+                        all_text = " ".join(df[col].dropna().astype(str))
+                        words = re.findall(r"\w+", all_text.lower())
+                        counter = Counter(words)
+                        most_common = counter.most_common(50)
+                        pd.DataFrame(most_common, columns=["word","count"]).to_csv(
+                            os.path.join(output_dir, f"{col}_top_words.csv"), index=False
+                        )
+
         except Exception as e:
             print(f"⚠️ Could not execute task '{task['type']}': {e}")
 

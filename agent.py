@@ -2,7 +2,7 @@ import argparse
 import pandas as pd
 from cleaner import auto_clean
 from explain import gemini_generate_eda_plan
-from adaptive_eda_executor import adaptive_eda_executor  # <-- import executor
+from adaptive_eda_executor import adaptive_eda_executor  
 import json
 from datetime import datetime
 import os

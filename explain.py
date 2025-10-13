@@ -1,4 +1,3 @@
-# explain.py
 import os
 import json
 import pandas as pd
@@ -19,19 +18,12 @@ except Exception as e:
 def _generate_gemini_response(prompt: str) -> dict:
     if not client:
         print("⚠️ Cannot call API because the client is not initialized.")
-        return {
-            "recommended_eda": [
-                {"type": "summary_stats", "reason": "Fallback basic summary"},
-                {"type": "correlation", "reason": "Fallback correlation"},
-                {"type": "category_counts", "columns": [], "reason": "Fallback top categories"}
-            ]
-        }
+        return {"recommended_eda": []}
 
     try:
         response = client.models.generate_content(
             model="gemini-2.5-flash",
-            # 🐛 FIX IS HERE: Replace 'input_text=prompt' with 'contents=[prompt]'
-            contents=[prompt], 
+            contents=[prompt],
             config={
                 "temperature": 0,
                 "response_mime_type": "application/json",
@@ -44,7 +36,8 @@ def _generate_gemini_response(prompt: str) -> dict:
                                 "type": "object",
                                 "properties": {
                                     "type": {"type": "string"},
-                                    "reason": {"type": "string"}
+                                    "reason": {"type": "string"},
+                                    "columns": {"type": "array", "items": {"type": "string"}}
                                 },
                                 "required": ["type", "reason"]
                             }
@@ -54,28 +47,27 @@ def _generate_gemini_response(prompt: str) -> dict:
                 }
             }
         )
-
-        text_output = response.text
-        return json.loads(text_output)
+        return json.loads(response.text)
     except Exception as e:
         print(f"⚠️ Gemini API call failed: {e}")
-        return {
-            "recommended_eda": [
-                {"type": "summary_stats", "reason": "Fallback basic summary"},
-                {"type": "correlation", "reason": "Fallback correlation"},
-                {"type": "category_counts", "columns": [], "reason": "Fallback top categories"}
-            ]
-        }
+        return {"recommended_eda": []}
 
 def gemini_generate_eda_plan(df: pd.DataFrame) -> dict:
-    sample = df.head(3).to_dict(orient="records")
+    sample = df.head(5).to_dict(orient="records")
     columns = list(df.columns)
-
     prompt = f"""
-You are an expert data analyst.
+You are an expert data analyst. Generate a structured, actionable EDA plan for the dataset.
 Columns: {columns}
 Sample rows: {sample}
-Generate a structured EDA plan in JSON format. The top-level key must be 'recommended_eda'.
-Each item in the 'recommended_eda' array must be an object with keys 'type' and 'reason'.
+
+Guidelines:
+1. Include numerical, categorical, multi-value, text, and date/time analyses.
+2. Suggest Top-N for high-cardinality categorical columns.
+3. Suggest distributions, correlations, and scatter plots for numerical data.
+4. Include temporal analysis if date/time columns exist.
+5. Include text analysis for description or free-text fields.
+6. Return JSON with top-level key `recommended_eda`. Each item must include:
+   - type, reason, and optionally columns.
+7. Suggest insights like top directors, popular genres, common release months, or other meaningful patterns.
 """
     return _generate_gemini_response(prompt)
