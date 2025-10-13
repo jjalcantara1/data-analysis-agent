@@ -1,8 +1,9 @@
 import argparse
 import pandas as pd
 from cleaner import auto_clean
-from explain import gemini_generate_eda_plan
-from adaptive_eda_executor import adaptive_eda_executor  
+# 🆕 Import the new data prep function
+from explain import gemini_generate_eda_plan, gemini_generate_data_prep_plan 
+from adaptive_eda_executor import adaptive_eda_executor 
 import json
 from datetime import datetime
 import os
@@ -11,9 +12,14 @@ def main(input_path, output_path=None):
     print(f"Loading dataset: {input_path}")
     df = pd.read_csv(input_path)
 
-    print("Cleaning dataset...")
-    cleaned_df = auto_clean(df)
+    # 🆕 STEP 1: Let Gemini determine the cleaning/prep steps from RAW data
+    data_prep_plan = gemini_generate_data_prep_plan(df)
 
+    print("Cleaning dataset using Gemini's Data Prep Plan...")
+    # 🆕 STEP 2: Pass the plan to auto_clean
+    cleaned_df = auto_clean(df, data_prep_plan)
+
+    # 🆕 STEP 3: Let Gemini determine the EDA plan from CLEANED data
     print("Generating Gemini EDA plan...")
     eda_plan = gemini_generate_eda_plan(cleaned_df)
 
@@ -29,6 +35,8 @@ def main(input_path, output_path=None):
                 "original_shape": list(df.shape),
                 "cleaned_shape": list(cleaned_df.shape)
             },
+            # 🆕 Include the Data Prep Plan in the report
+            "data_prep_plan": data_prep_plan, 
             "eda_plan": eda_plan
         }, f, indent=2)
 

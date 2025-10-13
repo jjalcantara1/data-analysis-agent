@@ -22,7 +22,7 @@ def top_n_frequency(df, col, n=10, multi_sep=None):
     
     counts = exploded.value_counts()
     top_counts = counts.head(n)
-    return top_counts  
+    return top_counts 
 
 
 def adaptive_eda_executor(df: pd.DataFrame, eda_plan: dict, output_dir="eda_outputs", top_n=10):
@@ -40,6 +40,10 @@ def adaptive_eda_executor(df: pd.DataFrame, eda_plan: dict, output_dir="eda_outp
             # Frequency / Top-N categorical
             elif "top-n" in task_type or "frequency" in task_type or "category" in task_type:
                 for col in task.get("columns", []):
+                    if col not in df.columns: # ⚠️ FIX: Check column existence
+                        print(f"⚠️ Column '{col}' not found. Skipping Top-N analysis.")
+                        continue
+
                     multi_sep = "," if col in ["cast", "listed_in"] else None
                     top_freq = top_n_frequency(df, col, n=top_n, multi_sep=multi_sep)
                     top_freq.to_csv(os.path.join(output_dir, f"{col}_top_{top_n}.csv"))
@@ -54,6 +58,10 @@ def adaptive_eda_executor(df: pd.DataFrame, eda_plan: dict, output_dir="eda_outp
             # Numeric distributions
             elif "distribution" in task_type or "histogram" in task_type or "box plot" in task_type:
                 for col in task.get("columns", []):
+                    if col not in df.columns: # ⚠️ FIX: Check column existence
+                        print(f"⚠️ Column '{col}' not found. Skipping distribution analysis.")
+                        continue
+                        
                     numeric = pd.to_numeric(df[col], errors="coerce")
                     plt.figure(figsize=(8,5))
                     sns.histplot(numeric.dropna(), kde=True, bins=30)
@@ -66,19 +74,29 @@ def adaptive_eda_executor(df: pd.DataFrame, eda_plan: dict, output_dir="eda_outp
             elif "relationship" in task_type or "scatter" in task_type:
                 cols = task.get("columns", [])
                 if len(cols) >= 2:
+                    col_x, col_y = cols[0], cols[1]
+                    # ⚠️ FIX: Check both columns exist before plotting
+                    if col_x not in df.columns or col_y not in df.columns:
+                        print(f"⚠️ Relationship skipped: Column '{col_x}' or '{col_y}' not found in data.")
+                        continue
+                        
                     plt.figure(figsize=(8,5))
-                    sns.scatterplot(x=cols[0], y=cols[1], data=df)
-                    plt.title(f"{cols[1]} vs {cols[0]}")
+                    sns.scatterplot(x=col_x, y=col_y, data=df)
+                    plt.title(f"{col_y} vs {col_x}")
                     plt.tight_layout()
-                    plt.savefig(os.path.join(output_dir, f"{cols[1]}_vs_{cols[0]}.png"))
+                    plt.savefig(os.path.join(output_dir, f"{col_y}_vs_{col_x}.png"))
                     plt.close()
 
             # Temporal / date analysis
-            # Temporal / date analysis with separate year and month
             elif "temporal" in task_type or any("date" in c for c in task.get("columns", [])):
                 for col in task.get("columns", []):
                     if col in df.columns:
-                        dates = pd.to_datetime(df[col], errors="coerce").dropna()
+                        # ⚠️ FIX: Ensure the column is actually a datetime object from the cleaning step
+                        if not pd.api.types.is_datetime64_any_dtype(df[col]):
+                            print(f"⚠️ Column '{col}' is not a datetime type. Skipping temporal analysis.")
+                            continue
+                            
+                        dates = df[col].dropna()
                         if not dates.empty:
                             # Yearly trend
                             yearly_counts = dates.dt.year.value_counts().sort_index()
@@ -98,9 +116,19 @@ def adaptive_eda_executor(df: pd.DataFrame, eda_plan: dict, output_dir="eda_outp
                             plt.title(f"Content additions per month ({col})")
                             plt.xlabel("Month")
                             plt.ylabel("Count")
-                            plt.xticks(ticks=range(12), labels=[
-                                "Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"
-                            ], rotation=45)
+                            
+                            # ⚠️ FIX: Dynamic Month Labels
+                            MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+                            
+                            # Map the actual month numbers (1-12) present in the data to their names
+                            present_months = month_counts.index.tolist()
+                            actual_labels = [MONTH_NAMES[m - 1] for m in present_months]
+                            
+                            # Set the ticks to the indices (0, 1, 2...) and the labels to the month names
+                            plt.xticks(ticks=range(len(present_months)), 
+                                       labels=actual_labels, 
+                                       rotation=45)
+                                       
                             plt.tight_layout()
                             plt.savefig(os.path.join(output_dir, f"{col}_monthly_trend.png"))
                             plt.close()

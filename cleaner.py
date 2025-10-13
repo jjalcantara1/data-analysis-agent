@@ -2,56 +2,76 @@ import pandas as pd
 import numpy as np
 import re
 
-def detect_explodable_columns(df: pd.DataFrame, sample_size=5):
-    """Detect columns with multi-value entries (comma-separated or list-like)."""
-    explodable = []
-    for col in df.select_dtypes(include="object"):
-        sample_vals = df[col].dropna().head(sample_size).astype(str)
-        if any("," in val for val in sample_vals):
-            explodable.append(col)
-        elif any(val.startswith("[") and val.endswith("]") for val in sample_vals):
-            explodable.append(col)
-    return explodable
+# Removed detect_explodable_columns and auto_explode as their logic is now in the Gemini plan
 
-def auto_explode(df: pd.DataFrame, columns):
-    """Explode detected multi-value columns."""
-    df = df.copy()
-    for col in columns:
-        print(f"[Auto-clean] Exploding column: {col}")
-        df[col] = df[col].apply(lambda x: [v.strip() for v in str(x).split(",")] if pd.notna(x) else [])
-        df = df.explode(col).reset_index(drop=True)
+def execute_explode(df: pd.DataFrame, col: str, delimiter: str):
+    """Explode a column based on the plan, only if the delimiter is not 'NONE'."""
+    if delimiter.upper() == 'NONE':
+        print(f"[Auto-clean] Skipping explosion for {col} (identified as single-entity, e.g., Address).")
+        return df
+
+    if col not in df.columns:
+        return df
+
+    print(f"[Auto-clean] Exploding column: {col} with delimiter '{delimiter}'")
+    
+    # Handle NaN values before applying string operations
+    series = df[col].dropna().astype(str)
+    
+    # Split, strip whitespace, and create a list
+    df[col] = df[col].apply(
+        lambda x: [v.strip() for v in str(x).split(delimiter)] 
+        if pd.notna(x) and delimiter in str(x) else [x]
+    )
+    
+    # Explode the list column
+    df = df.explode(col).reset_index(drop=True)
     return df
 
-def auto_clean(df: pd.DataFrame) -> pd.DataFrame:
+def execute_parse_date(df: pd.DataFrame, col: str, date_format: str):
+    """Parse a date column using a specified format."""
+    if col in df.columns:
+        print(f"[Auto-clean] Parsing date column: {col} with format '{date_format}'")
+        df[col] = pd.to_datetime(df[col], format=date_format, errors="coerce")
+    return df
+
+def execute_convert_numeric(df: pd.DataFrame, col: str):
+    """Convert a column to numeric, aggressively cleaning non-numeric characters."""
+    if col in df.columns and df[col].dtype == "object":
+        print(f"[Auto-clean] Converting numeric column: {col}")
+        
+        # Aggressively remove common non-numeric characters (currency, commas)
+        cleaned = df[col].astype(str).str.replace(r"[^\d\.\-]", "", regex=True)
+        numeric_series = pd.to_numeric(cleaned, errors="coerce")
+        df[col] = numeric_series
+    return df
+
+def auto_clean(df: pd.DataFrame, data_prep_plan: dict) -> pd.DataFrame:
     df = df.copy()
-    # Strip whitespace
+    
+    # Strip whitespace (general cleaning remains)
     for col in df.select_dtypes(include="object"):
         df[col] = df[col].apply(lambda x: x.strip() if isinstance(x, str) else x)
 
-    # Drop duplicates
+    # Drop duplicates (general cleaning remains)
     df = df.drop_duplicates()
+    
+    # 🆕 Execute Gemini's Data Preparation Plan
+    for task in data_prep_plan.get("data_prep", []):
+        col = task.get("column")
+        task_type = task.get("task")
 
-    # Explode multi-value columns
-    explodable = detect_explodable_columns(df)
-    if explodable:
-        df = auto_explode(df, explodable)
-        print("[Auto-clean] Exploded columns:", explodable)
-    else:
-        print("[Auto-clean] No columns were exploded.")
+        if task_type == "explode":
+            delimiter = task.get("delimiter", ",").replace("\\n", "\n") # Default to comma, handle newline
+            df = execute_explode(df, col, delimiter)
+        elif task_type == "parse_date":
+            date_format = task.get("format")
+            if date_format:
+                df = execute_parse_date(df, col, date_format)
+        elif task_type == "convert_numeric":
+            df = execute_convert_numeric(df, col)
 
-    # Parse numeric-like columns
-    for col in df.columns:
-        if df[col].dtype == "object":
-            cleaned = df[col].astype(str).str.replace(r"[^\d\.\-]", "", regex=True)
-            numeric_series = pd.to_numeric(cleaned, errors="coerce")
-            if numeric_series.notna().mean() > 0.5:
-                df[col] = numeric_series
-
-    # Parse dates
-    if "date_added" in df.columns:
-        df["date_added"] = pd.to_datetime(df["date_added"], errors="coerce")
-
-    # Parse durations
+    # Parse durations (specific hardcoded logic for 'duration' remains as a safeguard)
     if "duration" in df.columns:
         def parse_duration(val):
             if pd.isna(val):
