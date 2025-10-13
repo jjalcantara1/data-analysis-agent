@@ -2,8 +2,6 @@ import pandas as pd
 import numpy as np
 import re
 
-# Removed detect_explodable_columns and auto_explode as their logic is now in the Gemini plan
-
 def execute_explode(df: pd.DataFrame, col: str, delimiter: str):
     """Explode a column based on the plan, only if the delimiter is not 'NONE'."""
     if delimiter.upper() == 'NONE':
@@ -15,16 +13,11 @@ def execute_explode(df: pd.DataFrame, col: str, delimiter: str):
 
     print(f"[Auto-clean] Exploding column: {col} with delimiter '{delimiter}'")
     
-    # Handle NaN values before applying string operations
-    series = df[col].dropna().astype(str)
-    
-    # Split, strip whitespace, and create a list
     df[col] = df[col].apply(
         lambda x: [v.strip() for v in str(x).split(delimiter)] 
         if pd.notna(x) and delimiter in str(x) else [x]
     )
     
-    # Explode the list column
     df = df.explode(col).reset_index(drop=True)
     return df
 
@@ -40,29 +33,44 @@ def execute_convert_numeric(df: pd.DataFrame, col: str):
     if col in df.columns and df[col].dtype == "object":
         print(f"[Auto-clean] Converting numeric column: {col}")
         
-        # Aggressively remove common non-numeric characters (currency, commas)
         cleaned = df[col].astype(str).str.replace(r"[^\d\.\-]", "", regex=True)
         numeric_series = pd.to_numeric(cleaned, errors="coerce")
         df[col] = numeric_series
     return df
 
+
+def parse_duration_safe(val):
+    """
+    Parses duration into a clean numeric value and unit.
+    Returns a tuple (value, unit).
+    """
+    if pd.isna(val) or val is None:
+        return np.nan, np.nan
+    val = str(val).strip().lower()
+    
+    match = re.search(r"(\d+)\s*(min|season|seasons)", val)
+    if match:
+        num = float(match.group(1))
+        unit = match.group(2).replace('seasons', 'Season').replace('min', 'Minute')
+        return num, unit
+    
+    return np.nan, np.nan 
+
+
 def auto_clean(df: pd.DataFrame, data_prep_plan: dict) -> pd.DataFrame:
     df = df.copy()
     
-    # Strip whitespace (general cleaning remains)
     for col in df.select_dtypes(include="object"):
         df[col] = df[col].apply(lambda x: x.strip() if isinstance(x, str) else x)
 
-    # Drop duplicates (general cleaning remains)
     df = df.drop_duplicates()
     
-    # 🆕 Execute Gemini's Data Preparation Plan
     for task in data_prep_plan.get("data_prep", []):
         col = task.get("column")
         task_type = task.get("task")
 
         if task_type == "explode":
-            delimiter = task.get("delimiter", ",").replace("\\n", "\n") # Default to comma, handle newline
+            delimiter = task.get("delimiter", ",").replace("\\n", "\n")
             df = execute_explode(df, col, delimiter)
         elif task_type == "parse_date":
             date_format = task.get("format")
@@ -71,14 +79,15 @@ def auto_clean(df: pd.DataFrame, data_prep_plan: dict) -> pd.DataFrame:
         elif task_type == "convert_numeric":
             df = execute_convert_numeric(df, col)
 
-    # Parse durations (specific hardcoded logic for 'duration' remains as a safeguard)
     if "duration" in df.columns:
-        def parse_duration(val):
-            if pd.isna(val):
-                return np.nan
-            val = str(val).lower()
-            num = re.findall(r"\d+", val)
-            return float(num[0]) if num else np.nan
-        df["duration"] = df["duration"].apply(parse_duration)
+        parsed_data = df["duration"].apply(parse_duration_safe)
+        
+        df["duration_value"] = parsed_data.apply(lambda x: x[0])
+        df["duration_unit"] = parsed_data.apply(lambda x: x[1])
 
+        df = df.drop(columns=['duration'], errors='ignore')
+        df = df.rename(columns={'duration_value': 'duration'})
+        
+        print("[Auto-clean] Cleaned and split 'duration' into 'duration' (value) and 'duration_unit'.")
+        
     return df

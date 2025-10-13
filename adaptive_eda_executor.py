@@ -33,19 +33,22 @@ def adaptive_eda_executor(df: pd.DataFrame, eda_plan: dict, output_dir="eda_outp
         print(f"[Adaptive EDA] Executing: {task['type']}")
         
         try:
-            # Missing values
             if "missing" in task_type:
                 df.isna().sum().to_csv(os.path.join(output_dir, "missing_values.csv"))
 
-            # Frequency / Top-N categorical
             elif "top-n" in task_type or "frequency" in task_type or "category" in task_type:
                 for col in task.get("columns", []):
-                    if col not in df.columns: # ⚠️ FIX: Check column existence
-                        print(f"⚠️ Column '{col}' not found. Skipping Top-N analysis.")
+                    if col not in df.columns:
+                        print(f"Column '{col}' not found. Skipping Top-N analysis.")
                         continue
-
+                        
                     multi_sep = "," if col in ["cast", "listed_in"] else None
                     top_freq = top_n_frequency(df, col, n=top_n, multi_sep=multi_sep)
+                    
+                    if top_freq.empty:
+                        print(f"Top-N analysis skipped for '{col}': No data found.")
+                        continue
+                        
                     top_freq.to_csv(os.path.join(output_dir, f"{col}_top_{top_n}.csv"))
 
                     plt.figure(figsize=(8, max(4, len(top_freq)/2)))
@@ -55,13 +58,32 @@ def adaptive_eda_executor(df: pd.DataFrame, eda_plan: dict, output_dir="eda_outp
                     plt.savefig(os.path.join(output_dir, f"{col}_top_{top_n}.png"))
                     plt.close()
 
-            # Numeric distributions
             elif "distribution" in task_type or "histogram" in task_type or "box plot" in task_type:
                 for col in task.get("columns", []):
-                    if col not in df.columns: # ⚠️ FIX: Check column existence
+                    if col not in df.columns:
                         print(f"⚠️ Column '{col}' not found. Skipping distribution analysis.")
                         continue
                         
+                    if col == 'duration' and 'duration_unit' in df.columns:
+                        movies_df = df[df['duration_unit'] == 'Minute']
+                        if not movies_df.empty:
+                            plt.figure(figsize=(8,5))
+                            sns.histplot(movies_df[col].dropna(), kde=True, bins=30)
+                            plt.title(f"Distribution of Movie Duration (Minutes)")
+                            plt.tight_layout()
+                            plt.savefig(os.path.join(output_dir, f"movie_{col}_distribution.png"))
+                            plt.close()
+
+                        tv_shows_df = df[df['duration_unit'] == 'Season']
+                        if not tv_shows_df.empty:
+                            plt.figure(figsize=(8,5))
+                            sns.histplot(tv_shows_df[col].dropna(), discrete=True, bins=range(int(tv_shows_df[col].max()) + 2))
+                            plt.title(f"Distribution of TV Show Duration (Seasons)")
+                            plt.tight_layout()
+                            plt.savefig(os.path.join(output_dir, f"tv_show_{col}_distribution.png"))
+                            plt.close()
+                        continue 
+
                     numeric = pd.to_numeric(df[col], errors="coerce")
                     plt.figure(figsize=(8,5))
                     sns.histplot(numeric.dropna(), kde=True, bins=30)
@@ -70,12 +92,10 @@ def adaptive_eda_executor(df: pd.DataFrame, eda_plan: dict, output_dir="eda_outp
                     plt.savefig(os.path.join(output_dir, f"{col}_distribution.png"))
                     plt.close()
 
-            # Scatter / relationships
             elif "relationship" in task_type or "scatter" in task_type:
                 cols = task.get("columns", [])
                 if len(cols) >= 2:
                     col_x, col_y = cols[0], cols[1]
-                    # ⚠️ FIX: Check both columns exist before plotting
                     if col_x not in df.columns or col_y not in df.columns:
                         print(f"⚠️ Relationship skipped: Column '{col_x}' or '{col_y}' not found in data.")
                         continue
@@ -87,54 +107,111 @@ def adaptive_eda_executor(df: pd.DataFrame, eda_plan: dict, output_dir="eda_outp
                     plt.savefig(os.path.join(output_dir, f"{col_y}_vs_{col_x}.png"))
                     plt.close()
 
-            # Temporal / date analysis
             elif "temporal" in task_type or any("date" in c for c in task.get("columns", [])):
                 for col in task.get("columns", []):
-                    if col in df.columns:
-                        # ⚠️ FIX: Ensure the column is actually a datetime object from the cleaning step
-                        if not pd.api.types.is_datetime64_any_dtype(df[col]):
-                            print(f"⚠️ Column '{col}' is not a datetime type. Skipping temporal analysis.")
-                            continue
+                    if col not in df.columns:
+                        print(f"⚠️ Column '{col}' not found. Skipping temporal analysis.")
+                        continue
+                        
+                    if col.lower().endswith('_year'):
+                        numeric_year = pd.to_numeric(df[col], errors='coerce').dropna()
+                        if not numeric_year.empty and (len(numeric_year) / len(df[col].dropna())) > 0.8:
+                            yearly_counts = numeric_year.astype(int).value_counts().sort_index()
                             
-                        dates = df[col].dropna()
-                        if not dates.empty:
-                            # Yearly trend
-                            yearly_counts = dates.dt.year.value_counts().sort_index()
                             plt.figure(figsize=(10,4))
                             yearly_counts.plot(kind="bar")
-                            plt.title(f"Content additions per year ({col})")
+                            plt.title(f"Content count per year ({col})")
                             plt.xlabel("Year")
                             plt.ylabel("Count")
                             plt.tight_layout()
                             plt.savefig(os.path.join(output_dir, f"{col}_yearly_trend.png"))
                             plt.close()
-
-                            # Monthly trend (seasonal pattern)
-                            month_counts = dates.dt.month.value_counts().sort_index()
-                            plt.figure(figsize=(10,4))
-                            month_counts.plot(kind="bar")
-                            plt.title(f"Content additions per month ({col})")
-                            plt.xlabel("Month")
-                            plt.ylabel("Count")
+                            continue 
+                        
+                    if not pd.api.types.is_datetime64_any_dtype(df[col]): 
+                        print(f"⚠️ Column '{col}' is not a datetime type. Skipping temporal analysis.")
+                        continue
                             
-                            # ⚠️ FIX: Dynamic Month Labels
-                            MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
-                            
-                            # Map the actual month numbers (1-12) present in the data to their names
-                            present_months = month_counts.index.tolist()
-                            actual_labels = [MONTH_NAMES[m - 1] for m in present_months]
-                            
-                            # Set the ticks to the indices (0, 1, 2...) and the labels to the month names
-                            plt.xticks(ticks=range(len(present_months)), 
-                                       labels=actual_labels, 
-                                       rotation=45)
-                                       
-                            plt.tight_layout()
-                            plt.savefig(os.path.join(output_dir, f"{col}_monthly_trend.png"))
-                            plt.close()
+                    dates = df[col].dropna()
+                    if not dates.empty:
+                        # Yearly trend
+                        yearly_counts = dates.dt.year.value_counts().sort_index()
+                        plt.figure(figsize=(10,4))
+                        yearly_counts.plot(kind="bar")
+                        plt.title(f"Content additions per year ({col})")
+                        plt.xlabel("Year")
+                        plt.ylabel("Count")
+                        plt.tight_layout()
+                        plt.savefig(os.path.join(output_dir, f"{col}_yearly_trend.png"))
+                        plt.close()
+
+                        # Monthly trend
+                        month_counts = dates.dt.month.value_counts().sort_index()
+                        plt.figure(figsize=(10,4))
+                        month_counts.plot(kind="bar")
+                        plt.title(f"Content additions per month ({col})")
+                        plt.xlabel("Month")
+                        plt.ylabel("Count")
+                        
+                        MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+                        present_months = month_counts.index.tolist()
+                        actual_labels = [MONTH_NAMES[m - 1] for m in present_months]
+                        
+                        plt.xticks(ticks=range(len(present_months)), 
+                                   labels=actual_labels, 
+                                   rotation=45)
+                                   
+                        plt.tight_layout()
+                        plt.savefig(os.path.join(output_dir, f"{col}_monthly_trend.png"))
+                        plt.close()
 
 
-            # Text analysis
+            elif "comparative analysis" in task_type and "duration" in task.get("columns", []) and "type" in task.get("columns", []):
+                if 'duration' not in df.columns or 'type' not in df.columns or 'duration_unit' not in df.columns:
+                    print("Cannot execute Type vs. Duration: Required columns 'duration', 'type', or 'duration_unit' missing.")
+                    continue
+                
+                movies_df = df[df['duration_unit'] == 'Minute']
+                if not movies_df.empty:
+                    plt.figure(figsize=(8,5))
+                    sns.boxplot(x='type', y='duration', data=movies_df.dropna(subset=['duration']))
+                    plt.title("Movie Duration Distribution (Minutes)")
+                    plt.tight_layout()
+                    plt.savefig(os.path.join(output_dir, f"type_vs_movie_duration_boxplot.png"))
+                    plt.close()
+                
+                tv_shows_df = df[df['duration_unit'] == 'Season']
+                if not tv_shows_df.empty:
+                    plt.figure(figsize=(8,5))
+                    season_counts = tv_shows_df.groupby('type')['duration'].value_counts().unstack(fill_value=0)
+                    season_counts.plot(kind='bar', stacked=True)
+                    plt.title("TV Show Duration (Seasons) by Type")
+                    plt.xlabel("Content Type")
+                    plt.ylabel("Count")
+                    plt.xticks(rotation=0)
+                    plt.tight_layout()
+                    plt.savefig(os.path.join(output_dir, f"type_vs_tv_show_duration_barplot.png"))
+                    plt.close()
+
+
+            elif "comparative analysis" in task_type and "rating" in task.get("columns", []) and "type" in task.get("columns", []):
+                if 'rating' not in df.columns or 'type' not in df.columns:
+                    print("⚠️ Cannot execute Type vs. Rating: Required columns 'rating' or 'type' missing.")
+                    continue
+                    
+                plt.figure(figsize=(12, 6))
+                plot_data = df.dropna(subset=['rating', 'type'])
+                if not plot_data.empty:
+                    sns.countplot(data=plot_data, x='rating', hue='type', 
+                                  order=plot_data['rating'].value_counts().index)
+                    plt.title("Rating Distribution by Content Type")
+                    plt.xticks(rotation=45, ha='right')
+                    plt.tight_layout()
+                    plt.savefig(os.path.join(output_dir, "type_vs_rating_countplot.png"))
+                    plt.close()
+                else:
+                    print("⚠️ Type vs Rating skipped: No clean data for plot.")
+            
             elif "text analysis" in task_type:
                 for col in task.get("columns", []):
                     if col in df.columns:
