@@ -1,93 +1,57 @@
 import os
-import re
 import json
 import google.generativeai as genai
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
+GENAI_API_KEY = os.getenv("GEMINI_API_KEY")
+if not GENAI_API_KEY:
+    raise ValueError("GEMINI_API_KEY not found in .env file")
 
-api_key = os.getenv("GEMINI_API_KEY")
-if not api_key:
-    raise ValueError("❌ GEMINI_API_KEY not found. Please add it to your .env file.")
-genai.configure(api_key=api_key)
+genai.configure(api_key=GENAI_API_KEY)
 
-
-def _generate_gemini_response(prompt: str, temperature: float = 0.3) -> dict:
-    """Send structured prompt to Gemini and safely parse JSON responses, including markdown-wrapped JSON."""
+def _generate_gemini_response(prompt: str) -> dict:
+    """
+    Calls Gemini API to generate an adaptive EDA plan.
+    Returns JSON containing 'recommended_eda'.
+    """
     try:
-        model = genai.GenerativeModel("gemini-flash-latest")
-        response = model.generate_content(prompt)
-        text = response.text.strip()
+        response = genai.ChatCompletion.create(
+            model="gemini-1.5",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0
+        )
+        # Extract text from Gemini response
+        text_output = response.choices[0].message.content
 
-        # Handle wrapped JSON inside ```json ... ```
-        json_match = re.search(r"```json\s*(\{.*?\})\s*```", text, re.DOTALL)
-        if json_match:
-            text = json_match.group(1)
+        return json.loads(text_output)
+    except json.JSONDecodeError:
+        print("⚠️ Gemini response could not be parsed, using fallback plan.")
+        return {
+            "recommended_eda": [
+                {"type": "summary_stats", "reason": "Fallback basic summary"},
+                {"type": "correlation", "reason": "Fallback correlation"},
+                {"type": "category_counts", "columns": [], "reason": "Fallback top categories"}
+            ]
+        }
+    except AttributeError as e:
+        print(f"⚠️ Gemini API call failed: {e}")
+        return {
+            "recommended_eda": [
+                {"type": "summary_stats", "reason": "Fallback basic summary"},
+                {"type": "correlation", "reason": "Fallback correlation"},
+                {"type": "category_counts", "columns": [], "reason": "Fallback top categories"}
+            ]
+        }
 
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            return {"explanation": text, "confidence": 0.8, "reasoning_steps": []}
-
-    except Exception as e:
-        return {"error": str(e), "confidence": 0.0, "reasoning_steps": []}
-
-
-def explain_eda(eda_summary: dict, dataset_name: str = "dataset") -> dict:
+def gemini_generate_eda_plan(df) -> dict:
+    sample = df.head(3).to_dict(orient="records")
+    columns = list(df.columns)
     prompt = f"""
-You are a data analysis assistant.
-Given this EDA summary from {dataset_name}:
-{json.dumps(eda_summary, indent=2)}
-
-Explain the dataset in simple terms.
-Provide 3–5 key findings and 3 actionable recommendations.
-Respond in JSON format:
-{{
-  "summary": "...",
-  "key_findings": ["...", "..."],
-  "recommendations": ["...", "..."],
-  "confidence": 0.0 to 1.0
-}}
+You are an expert data analyst.
+Columns: {columns}
+Sample rows: {sample}
+Generate a structured EDA plan in JSON with keys 'recommended_eda'.
+Each task should include 'type' and 'reason'.
 """
     return _generate_gemini_response(prompt)
-
-
-def explain_model(model_results: dict) -> dict:
-    prompt = f"""
-You are an AI model evaluation assistant.
-Given these model results:
-{json.dumps(model_results, indent=2)}
-
-1. Identify the best performing model and justify why.
-2. Summarize strengths and weaknesses of all models.
-3. Provide 2–3 recommendations for improvement.
-
-Return JSON formatted output:
-{{
-  "best_model": "...",
-  "analysis": "...",
-  "recommendations": ["...", "..."],
-  "confidence": 0.0 to 1.0
-}}
-"""
-    return _generate_gemini_response(prompt)
-
-
-# if __name__ == "__main__":
-#     mock_eda = {
-#         "column_types": {"numerical": ["price", "sales"], "categorical": ["region"]},
-#         "summary_statistics": {"price": {"mean": 100, "std": 10}},
-#         "feature_engineering_suggestions": ["Normalize price"],
-#     }
-
-#     mock_model = {
-#         "task_type": "regression",
-#         "models": {"RandomForestRegressor": {"R2": 0.78}, "LinearRegression": {"R2": 0.65}},
-#         "best_model": {"name": "RandomForestRegressor", "R2": 0.78},
-#     }
-
-#     print("🔹 EDA Explanation:")
-#     print(explain_eda(mock_eda, "Sales Data"))
-#     print("\n🔹 Model Explanation:")
-#     print(explain_model(mock_model))

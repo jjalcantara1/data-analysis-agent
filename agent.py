@@ -30,10 +30,10 @@ def main(input_file: str, output_dir: str = "sample_outputs"):
 
     print("EDA pipeline completed successfully.")
 
-# if __name__ == "__main__":
-#     import argparse
-#     parser = argparse.ArgumentParser(description="Intelligent EDA Agent")
-#     parser.add_argument("--input", required=True, help="Path to CSV input file")
-#     parser.add_argument("--output", default="sample_outputs", help="Directory to save reports")
-#     args = parser.parse_args()
-#     main(args.input, args.output)
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Intelligent EDA Agent")
+    parser.add_argument("--input", required=True, help="Path to CSV input file")
+    parser.add_argument("--output", default="sample_outputs", help="Directory to save reports")
+    args = parser.parse_args()
+    main(args.input, args.output)
