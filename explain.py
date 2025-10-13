@@ -1,5 +1,7 @@
+# explain.py
 import os
 import json
+import pandas as pd
 from google import genai
 from dotenv import load_dotenv
 
@@ -27,10 +29,12 @@ def _generate_gemini_response(prompt: str) -> dict:
 
     try:
         response = client.models.generate_content(
-            model="gemini-2.5-flash", 
+            model="gemini-2.5-flash",
+            # 🐛 FIX IS HERE: Replace 'input_text=prompt' with 'contents=[prompt]'
+            contents=[prompt], 
             config={
                 "temperature": 0,
-                "response_mime_type": "application/json", 
+                "response_mime_type": "application/json",
                 "response_schema": {
                     "type": "object",
                     "properties": {
@@ -50,7 +54,7 @@ def _generate_gemini_response(prompt: str) -> dict:
                 }
             }
         )
-        
+
         text_output = response.text
         return json.loads(text_output)
     except Exception as e:
@@ -66,7 +70,7 @@ def _generate_gemini_response(prompt: str) -> dict:
 def gemini_generate_eda_plan(df: pd.DataFrame) -> dict:
     sample = df.head(3).to_dict(orient="records")
     columns = list(df.columns)
-    
+
     prompt = f"""
 You are an expert data analyst.
 Columns: {columns}
@@ -75,4 +79,3 @@ Generate a structured EDA plan in JSON format. The top-level key must be 'recomm
 Each item in the 'recommended_eda' array must be an object with keys 'type' and 'reason'.
 """
     return _generate_gemini_response(prompt)
-

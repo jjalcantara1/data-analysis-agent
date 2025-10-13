@@ -1,17 +1,15 @@
+# agent.py
+import argparse
 import pandas as pd
 from cleaner import auto_clean
 from explain import gemini_generate_eda_plan
-from eda import execute_eda_plan
-from reporter import generate_report
-import os
+import json
 from datetime import datetime
+import os
 
-def main(input_file: str, output_dir: str = "sample_outputs"):
-    os.makedirs(output_dir, exist_ok=True)
-    os.makedirs("artifacts", exist_ok=True)
-
-    print(f"Loading dataset: {input_file}")
-    df = pd.read_csv(input_file)
+def main(input_path, output_path=None):
+    print(f"Loading dataset: {input_path}")
+    df = pd.read_csv(input_path)
 
     print("Cleaning dataset...")
     cleaned_df = auto_clean(df)
@@ -19,21 +17,27 @@ def main(input_file: str, output_dir: str = "sample_outputs"):
     print("Generating Gemini EDA plan...")
     eda_plan = gemini_generate_eda_plan(cleaned_df)
 
-    print("Executing adaptive EDA...")
-    eda_results = execute_eda_plan(cleaned_df, eda_plan)
+    # Automatic output folder if not provided
+    if not output_path:
+        output_path = "sample_outputs"
+    os.makedirs(output_path, exist_ok=True)
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    report_path = os.path.join(output_dir, f"report_{timestamp}.json")
-
-    print(f"Generating report: {report_path}")
-    generate_report(df, cleaned_df, eda_plan, eda_results, report_path)
+    output_file = os.path.join(output_path, f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+    print(f"Generating report: {output_file}")
+    with open(output_file, "w") as f:
+        json.dump({
+            "metadata": {
+                "original_shape": list(df.shape),
+                "cleaned_shape": list(cleaned_df.shape)
+            },
+            "eda_plan": eda_plan
+        }, f, indent=2)
 
     print("EDA pipeline completed successfully.")
 
 if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser(description="Intelligent EDA Agent")
-    parser.add_argument("--input", required=True, help="Path to CSV input file")
-    parser.add_argument("--output", default="sample_outputs", help="Directory to save reports")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input", type=str, required=True)
+    parser.add_argument("--output", type=str, required=False, help="Optional output folder")
     args = parser.parse_args()
     main(args.input, args.output)
