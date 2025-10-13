@@ -31,7 +31,6 @@ def auto_clean(df: pd.DataFrame) -> pd.DataFrame:
     exploded_columns = []
 
     for col in df.columns:
-        # convert numeric-like strings to numbers
         if df[col].dtype == "object":
             cleaned = df[col].astype(str).str.replace(r"[^\d\.\-]", "", regex=True)
             numeric_series = pd.to_numeric(cleaned, errors="coerce")
@@ -43,7 +42,6 @@ def auto_clean(df: pd.DataFrame) -> pd.DataFrame:
     for col in df.select_dtypes(include="object"):
         df[col] = df[col].apply(lambda x: x.strip() if isinstance(x, str) else x)
 
-    # detect and explode multi-value columns safely
     explodable = detect_explodable_columns(df)
     if explodable:
         df = auto_explode(df, explodable)

@@ -1,8 +1,8 @@
-# agent.py
 import argparse
 import pandas as pd
 from cleaner import auto_clean
 from explain import gemini_generate_eda_plan
+from adaptive_eda_executor import adaptive_eda_executor  # <-- import executor
 import json
 from datetime import datetime
 import os
@@ -17,7 +17,6 @@ def main(input_path, output_path=None):
     print("Generating Gemini EDA plan...")
     eda_plan = gemini_generate_eda_plan(cleaned_df)
 
-    # Automatic output folder if not provided
     if not output_path:
         output_path = "sample_outputs"
     os.makedirs(output_path, exist_ok=True)
@@ -32,6 +31,9 @@ def main(input_path, output_path=None):
             },
             "eda_plan": eda_plan
         }, f, indent=2)
+
+    print("Executing adaptive EDA tasks...")
+    adaptive_eda_executor(cleaned_df, eda_plan, output_dir=os.path.join(output_path, "eda_outputs"))
 
     print("EDA pipeline completed successfully.")
 
