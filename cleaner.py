@@ -29,10 +29,19 @@ def execute_parse_date(df: pd.DataFrame, col: str, date_format: str):
     return df
 
 def execute_convert_numeric(df: pd.DataFrame, col: str):
-    """Convert a column to numeric, aggressively cleaning non-numeric characters."""
+    """
+    Convert a column to numeric, aggressively cleaning non-numeric characters.
+    Handles common edge cases like '4+' before general cleaning.
+    """
     if col in df.columns and df[col].dtype == "object":
         print(f"[Auto-clean] Converting numeric column: {col}")
         
+        # FIX: Handle common numeric string formats like '4+' by removing the '+'
+        if df[col].astype(str).str.contains(r"\d+\s*\+", regex=True).any():
+            print(f"  [Auto-clean] Handling numeric plus sign (+) by removing it in column: {col}")
+            df[col] = df[col].astype(str).str.replace("+", "", regex=False)
+        
+        # Aggressively remove common non-numeric characters (currency, commas)
         cleaned = df[col].astype(str).str.replace(r"[^\d\.\-]", "", regex=True)
         numeric_series = pd.to_numeric(cleaned, errors="coerce")
         df[col] = numeric_series
@@ -48,10 +57,12 @@ def parse_duration_safe(val):
         return np.nan, np.nan
     val = str(val).strip().lower()
     
+    # Matches patterns like '90 min', '1 season', '3 seasons'
     match = re.search(r"(\d+)\s*(min|season|seasons)", val)
     if match:
         num = float(match.group(1))
-        unit = match.group(2).replace('seasons', 'Season').replace('min', 'Minute')
+        # Normalize unit names
+        unit = match.group(2).replace('seasons', 'Season').replace('season', 'Season').replace('min', 'Minute')
         return num, unit
     
     return np.nan, np.nan 
@@ -60,11 +71,14 @@ def parse_duration_safe(val):
 def auto_clean(df: pd.DataFrame, data_prep_plan: dict) -> pd.DataFrame:
     df = df.copy()
     
+    # General cleaning: strip whitespace from object columns
     for col in df.select_dtypes(include="object"):
         df[col] = df[col].apply(lambda x: x.strip() if isinstance(x, str) else x)
 
+    # General cleaning: drop exact duplicates
     df = df.drop_duplicates()
     
+    # Execute Gemini's Data Preparation Plan tasks
     for task in data_prep_plan.get("data_prep", []):
         col = task.get("column")
         task_type = task.get("task")
@@ -79,12 +93,14 @@ def auto_clean(df: pd.DataFrame, data_prep_plan: dict) -> pd.DataFrame:
         elif task_type == "convert_numeric":
             df = execute_convert_numeric(df, col)
 
+    # Specific cleaning for 'duration' column (if present)
     if "duration" in df.columns:
         parsed_data = df["duration"].apply(parse_duration_safe)
         
         df["duration_value"] = parsed_data.apply(lambda x: x[0])
         df["duration_unit"] = parsed_data.apply(lambda x: x[1])
 
+        # Rename the value column and drop the original
         df = df.drop(columns=['duration'], errors='ignore')
         df = df.rename(columns={'duration_value': 'duration'})
         
