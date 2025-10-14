@@ -13,10 +13,14 @@ def execute_explode(df: pd.DataFrame, col: str, delimiter: str):
 
     print(f"[Auto-clean] Exploding column: {col} with delimiter '{delimiter}'")
     
+    # Safely split, strip whitespace, and handle nan/empty strings
     df[col] = df[col].apply(
-        lambda x: [v.strip() for v in str(x).split(delimiter)] 
-        if pd.notna(x) and delimiter in str(x) else [x]
+        lambda x: [v.strip() for v in str(x).split(delimiter) if v.strip() != ''] 
+        if pd.notna(x) and isinstance(x, str) and delimiter in str(x) else [x]
     )
+    
+    # Flatten single-element lists that weren't split
+    df[col] = df[col].apply(lambda x: x[0] if isinstance(x, list) and len(x) == 1 else x)
     
     df = df.explode(col).reset_index(drop=True)
     return df
@@ -31,14 +35,13 @@ def execute_parse_date(df: pd.DataFrame, col: str, date_format: str):
 def execute_convert_numeric(df: pd.DataFrame, col: str):
     """
     Convert a column to numeric, aggressively cleaning non-numeric characters.
-    Handles common edge cases like '4+' before general cleaning.
     """
     if col in df.columns and df[col].dtype == "object":
         print(f"[Auto-clean] Converting numeric column: {col}")
         
-        # FIX: Handle common numeric string formats like '4+' by removing the '+'
+        # Handle common numeric string formats like '4+' by removing the '+'
         if df[col].astype(str).str.contains(r"\d+\s*\+", regex=True).any():
-            print(f"  [Auto-clean] Handling numeric plus sign (+) by removing it in column: {col}")
+            print(f"  [Auto-clean] Handling numeric plus sign (+) by removing it in column: {col}")
             df[col] = df[col].astype(str).str.replace("+", "", regex=False)
         
         # Aggressively remove common non-numeric characters (currency, commas)
@@ -57,11 +60,9 @@ def parse_duration_safe(val):
         return np.nan, np.nan
     val = str(val).strip().lower()
     
-    # Matches patterns like '90 min', '1 season', '3 seasons'
     match = re.search(r"(\d+)\s*(min|season|seasons)", val)
     if match:
         num = float(match.group(1))
-        # Normalize unit names
         unit = match.group(2).replace('seasons', 'Season').replace('season', 'Season').replace('min', 'Minute')
         return num, unit
     
@@ -100,7 +101,6 @@ def auto_clean(df: pd.DataFrame, data_prep_plan: dict) -> pd.DataFrame:
         df["duration_value"] = parsed_data.apply(lambda x: x[0])
         df["duration_unit"] = parsed_data.apply(lambda x: x[1])
 
-        # Rename the value column and drop the original
         df = df.drop(columns=['duration'], errors='ignore')
         df = df.rename(columns={'duration_value': 'duration'})
         
