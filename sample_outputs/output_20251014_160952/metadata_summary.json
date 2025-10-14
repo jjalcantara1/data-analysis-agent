@@ -1,0 +1,111 @@
+{
+  "metadata": {
+    "original_shape": [
+      200,
+      15
+    ],
+    "cleaned_shape": [
+      400,
+      15
+    ],
+    "retrieved_at": "2025-10-14T16:10:59.863071"
+  },
+  "cleaning_summary": {
+    "duplicates_removed": -200,
+    "columns_converted": []
+  },
+  "data_prep_plan": {
+    "data_prep": [
+      {
+        "column": "Location",
+        "task": "explode",
+        "delimiter": ",",
+        "reason": "To separate neighborhood and state for individual analysis, allowing for more granular geographical insights."
+      }
+    ]
+  },
+  "eda_plan": {
+    "recommended_eda": [
+      {
+        "type": "Distribution Analysis",
+        "reason": "To understand the frequency and spread of individual features, identifying common categories and value ranges for user demographics, preferences, and ratings.",
+        "columns": [
+          "Gender",
+          "Marital Status",
+          "Activity",
+          "Alcohol ",
+          "Smoker",
+          "Often A S",
+          "Budget",
+          "Food Rating",
+          "Service Rating",
+          "Overall Rating",
+          "YOB",
+          "Location",
+          "Cuisines"
+        ]
+      },
+      {
+        "type": "Feature Engineering",
+        "reason": "To derive a more interpretable demographic feature ('Age') from 'YOB' for age-based analysis and segmentation.",
+        "columns": [
+          "YOB"
+        ]
+      },
+      {
+        "type": "Bivariate Analysis",
+        "reason": "To identify how user demographics, lifestyle choices, and preferences influence Food, Service, and Overall Ratings, revealing drivers of satisfaction.",
+        "columns": [
+          "Overall Rating",
+          "Food Rating",
+          "Service Rating",
+          "Gender",
+          "Age",
+          "Marital Status",
+          "Activity",
+          "Budget",
+          "Cuisines",
+          "Alcohol ",
+          "Smoker",
+          "Often A S",
+          "Location"
+        ]
+      },
+      {
+        "type": "Bivariate Analysis",
+        "reason": "To explore relationships between different user attributes, such as how gender correlates with alcohol consumption or activity with budget, to understand user segments.",
+        "columns": [
+          "Gender",
+          "Age",
+          "Marital Status",
+          "Activity",
+          "Budget",
+          "Alcohol ",
+          "Smoker",
+          "Often A S",
+          "Location",
+          "Cuisines"
+        ]
+      },
+      {
+        "type": "Top N Analysis",
+        "reason": "To identify the most frequent and impactful categories within high cardinality features like 'Location' and 'Cuisines', potentially revealing popular areas or food types.",
+        "columns": [
+          "Location",
+          "Cuisines"
+        ]
+      },
+      {
+        "type": "Correlation Analysis",
+        "reason": "To quantify the linear relationships between numerical and ordinal features, such as different rating types and budget, to understand their interdependencies.",
+        "columns": [
+          "Budget",
+          "Food Rating",
+          "Service Rating",
+          "Overall Rating",
+          "Age"
+        ]
+      }
+    ]
+  }
+}
