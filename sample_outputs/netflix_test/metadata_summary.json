@@ -8,7 +8,7 @@
       149512,
       13
     ],
-    "retrieved_at": "2025-10-15T22:41:22.736493"
+    "retrieved_at": "2025-10-15T23:59:43.753463"
   },
   "cleaning_summary": {
     "duplicates_removed": -140705,
@@ -21,19 +21,19 @@
       "column": "cast",
       "task": "explode",
       "delimiter": ", ",
-      "reason": "To analyze individual cast members."
+      "reason": "The 'cast' column contains multiple actor names separated by commas and spaces, which should be exploded into individual rows for better analysis of each actor."
     },
     {
       "column": "date_added",
       "task": "parse_date",
       "format": "%B %d, %Y",
-      "reason": "To enable time-series analysis and proper date comparisons."
+      "reason": "The 'date_added' column is currently a string and needs to be converted to a datetime object for proper temporal analysis and filtering."
     },
     {
       "column": "listed_in",
       "task": "explode",
       "delimiter": ", ",
-      "reason": "To analyze individual genres/categories."
+      "reason": "The 'listed_in' column contains multiple genres or categories separated by commas and spaces, which should be exploded into individual rows to analyze each category independently."
     }
   ],
   "eda_plan": [

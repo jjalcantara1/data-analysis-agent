@@ -19,12 +19,12 @@
   ],
   "confidence_scores": {
     "Retrieve": 0.95,
-    "Plan": 0.9,
+    "Plan": 0.95,
     "Analyze": 0.85,
     "Respond": 0.9
   },
   "final_response": {
-    "report_path": "sample_outputs\\test_final_structured\\FINAL_EDA_REPORT.md",
+    "report_path": "sample_outputs\\final_test\\FINAL_EDA_REPORT.md",
     "summary": "Pipeline completed with structured reasoning."
   }
 }

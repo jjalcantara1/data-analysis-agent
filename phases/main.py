@@ -5,16 +5,14 @@ import os
 import json
 
 from cleaner.auto_clean import auto_clean
-from explain.data_prep import gemini_generate_data_prep_plan
 from explain.eda_plan import gemini_generate_eda_plan
-from explain.final_report import gemini_generate_final_report
-from adaptive_eda_executor.adaptive_eda_executor import adaptive_eda_executor
 from reporter.save_report import save_final_markdown_report
 from reporter.generate_report import generate_report
-from agent.plan import plan_phase
-from agent.retrieve import retrieve_phase
-from agent.analyze import analyze_phase
-from agent.respond import respond_phase
+
+from .plan import plan_phase
+from .retrieve import retrieve_phase
+from .analyze import analyze_phase
+from .respond import respond_phase
 
 def main(input_path, output_folder_name=None):
     """Runs the full data analysis pipeline with structured reasoning sequence."""
