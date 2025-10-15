@@ -75,15 +75,15 @@ def parse_duration_safe(val):
     return np.nan, np.nan 
 
 
-def auto_clean(df: pd.DataFrame, data_prep_plan: dict) -> pd.DataFrame:
+def auto_clean(df: pd.DataFrame, data_prep_plan: list) -> pd.DataFrame:
     df = df.copy()
-    
+
     for col in df.select_dtypes(include="object"):
         df[col] = df[col].apply(lambda x: x.strip() if isinstance(x, str) else x)
 
     df = df.drop_duplicates()
-    
-    for task in data_prep_plan.get("data_prep", []):
+
+    for task in data_prep_plan:
         col = task.get("column")
         task_type = task.get("task")
 

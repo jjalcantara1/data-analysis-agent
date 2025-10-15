@@ -1,0 +1,79 @@
+{
+  "metadata": {
+    "original_shape": [
+      8807,
+      12
+    ],
+    "cleaned_shape": [
+      149512,
+      13
+    ],
+    "retrieved_at": "2025-10-15T22:41:22.736493"
+  },
+  "cleaning_summary": {
+    "duplicates_removed": -140705,
+    "columns_converted": [
+      "duration_unit"
+    ]
+  },
+  "data_prep_plan": [
+    {
+      "column": "cast",
+      "task": "explode",
+      "delimiter": ", ",
+      "reason": "To analyze individual cast members."
+    },
+    {
+      "column": "date_added",
+      "task": "parse_date",
+      "format": "%B %d, %Y",
+      "reason": "To enable time-series analysis and proper date comparisons."
+    },
+    {
+      "column": "listed_in",
+      "task": "explode",
+      "delimiter": ", ",
+      "reason": "To analyze individual genres/categories."
+    }
+  ],
+  "eda_plan": [
+    {
+      "type": "Univariate Analysis",
+      "reason": "To understand the overall distribution of content types (Movies vs. TV Shows) on the platform, which is a fundamental characteristic of the dataset.",
+      "columns": [
+        "type"
+      ]
+    },
+    {
+      "type": "Temporal Trend Analysis",
+      "reason": "To identify patterns in content addition over time, revealing growth trends or specific periods of increased content acquisition.",
+      "columns": [
+        "date_added"
+      ]
+    },
+    {
+      "type": "Geographical Distribution Analysis",
+      "reason": "To determine the primary countries contributing content, highlighting key content markets or production hubs.",
+      "columns": [
+        "country"
+      ]
+    },
+    {
+      "type": "Categorical Distribution Analysis",
+      "reason": "To identify the most popular genres and content ratings, providing insights into the platform's content focus and target audience.",
+      "columns": [
+        "listed_in",
+        "rating"
+      ]
+    },
+    {
+      "type": "Comparative Duration Analysis",
+      "reason": "To understand the typical duration characteristics for both movies and TV shows, revealing average movie lengths and TV show season counts.",
+      "columns": [
+        "duration",
+        "duration_unit",
+        "type"
+      ]
+    }
+  ]
+}

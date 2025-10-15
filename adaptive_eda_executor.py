@@ -7,7 +7,11 @@ from datetime import datetime
 import base64
 from io import BytesIO
 import re
+import warnings
 
+warnings.filterwarnings("ignore", category=UserWarning, module="pandas")
+warnings.filterwarnings("ignore", message="Could not infer format")
+warnings.filterwarnings("ignore", category=FutureWarning, module="seaborn")
 sns.set(style="whitegrid")
 
 TOP_N_LIMIT = 10
@@ -120,110 +124,146 @@ def top_n_frequency(df, col, n=TOP_N_LIMIT, multi_sep=None):
 
 
 
-def adaptive_eda_executor(df: pd.DataFrame, eda_plan: dict, output_dir="eda_outputs", top_n=TOP_N_LIMIT, chart_output_dir=None):
+def adaptive_eda_executor(df: pd.DataFrame, eda_plan: list, output_dir="eda_outputs", top_n=TOP_N_LIMIT, chart_output_dir=None):
     if chart_output_dir is None:
         chart_output_dir = os.path.join(output_dir, "charts")
     os.makedirs(chart_output_dir, exist_ok=True)
 
-    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    categorical_cols = df.select_dtypes(exclude=[np.number]).columns.tolist()
-
-    datetime_cols = []
-    for col in df.columns:
-        try:
-            if pd.to_datetime(df[col], errors='coerce').notnull().sum() > 0.5 * len(df):
-                datetime_cols.append(col)
-        except:
-            continue
-
-    print(f"[Detected] Numeric: {numeric_cols}")
-    print(f"[Detected] Categorical: {categorical_cols}")
-    print(f"[Detected] Date/Time: {datetime_cols}")
-
     report_sections = []
 
-    for col in numeric_cols:
-        numeric = df[col].dropna()
-        if numeric.empty:
-            continue
-        plot_title = f"Distribution of {col}"
-        fig, ax = plt.subplots(figsize=(8, 5))
-        sns.histplot(numeric, kde=True, bins=min(50, numeric.nunique()))
-        ax.set_title(plot_title)
-        plt.tight_layout()
-        base64_uri = _fig_to_base64(fig, plot_title, chart_output_dir)
-        report_sections.append({
-            "task_type": "Distribution Plot",
-            "columns": [col],
-            "base64_uri": base64_uri,
-            "insight": generate_numeric_insight(numeric, col)
-        })
+    for item in eda_plan:
+        task_type = item.get('type', '')
+        columns = item.get('columns', [])
+        reason = item.get('reason', '')
 
-    for col in categorical_cols:
-        counts = top_n_frequency(df, col, n=top_n)
-        if counts.empty or counts.sum() == 0:
-            continue
-        plot_title = f"Top {top_n} {col}"
-        fig, ax = plt.subplots(figsize=(8, max(4, len(counts)/2)))
-        sns.barplot(x=counts.values, y=counts.index, orient="h", palette="magma")
-        ax.set_title(plot_title)
-        plt.tight_layout()
-        base64_uri = _fig_to_base64(fig, plot_title, chart_output_dir)
-        report_sections.append({
-            "task_type": "Top N Bar Chart",
-            "columns": [col],
-            "base64_uri": base64_uri,
-            "insight": generate_categorical_insight(counts, col)
-        })
+        if task_type == "Univariate Analysis":
+            col = columns[0] if columns else None
+            if col and col in df.columns:
+                if df[col].dtype in ['object', 'category']:
+                    counts = top_n_frequency(df, col, n=top_n)
+                    if not counts.empty:
+                        plot_title = f"Distribution of {col}"
+                        fig, ax = plt.subplots(figsize=(8, 6))
+                        if len(counts) <= 5:
+                            ax.pie(counts.values, labels=counts.index, autopct='%1.1f%%', startangle=90)
+                            plt.axis('equal')
+                        else:
+                            sns.barplot(x=counts.values, y=counts.index, orient="h", hue=counts.index, palette="magma", legend=False)
+                        ax.set_title(plot_title)
+                        plt.tight_layout()
+                        base64_uri = _fig_to_base64(fig, plot_title, chart_output_dir)
+                        insight = generate_categorical_insight(counts, col)
+                        report_sections.append({
+                            "task_type": task_type,
+                            "columns": columns,
+                            "base64_uri": base64_uri,
+                            "insight": insight
+                        })
+                elif df[col].dtype in ['int64', 'float64']:
+                    numeric = df[col].dropna()
+                    if not numeric.empty:
+                        plot_title = f"Distribution of {col}"
+                        fig, ax = plt.subplots(figsize=(8, 5))
+                        sns.histplot(numeric, kde=True, bins=min(50, numeric.nunique()))
+                        ax.set_title(plot_title)
+                        plt.tight_layout()
+                        base64_uri = _fig_to_base64(fig, plot_title, chart_output_dir)
+                        insight = generate_numeric_insight(numeric, col)
+                        report_sections.append({
+                            "task_type": task_type,
+                            "columns": columns,
+                            "base64_uri": base64_uri,
+                            "insight": insight
+                        })
 
-    if len(numeric_cols) > 1:
-        corr = df[numeric_cols].corr(numeric_only=True)
-        fig, ax = plt.subplots(figsize=(10, 8))
-        sns.heatmap(corr, annot=True, fmt=".2f", cmap="coolwarm", linewidths=0.5)
-        ax.set_title("Correlation Heatmap")
-        plt.tight_layout()
-        base64_uri = _fig_to_base64(fig, "Correlation Heatmap", chart_output_dir)
-        report_sections.append({
-            "task_type": "Correlation Heatmap",
-            "columns": numeric_cols,
-            "base64_uri": base64_uri,
-            "insight": generate_correlation_insight(corr)
-        })
+        elif task_type == "Temporal Trend Analysis":
+            col = columns[0] if columns else None
+            if col and col in df.columns:
+                try:
+                    temp_parsed = pd.to_datetime(df[col], errors='coerce')
+                    if temp_parsed.notnull().sum() > 0:
+                        df_temp = df.copy()
+                        df_temp[col] = temp_parsed
+                        df_temp["Year"] = df_temp[col].dt.year
+                        if df_temp[col].dt.month.notnull().sum() > 0:
+                            df_temp["Month"] = df_temp[col].dt.to_period("M")
+                            time_col = "Month"
+                        else:
+                            time_col = "Year"
+                        time_counts = df_temp[time_col].value_counts().sort_index()
+                        if not time_counts.empty:
+                            fig, ax = plt.subplots(figsize=(10, 5))
+                            sns.lineplot(x=time_counts.index.astype(str), y=time_counts.values, marker="o")
+                            ax.set_title(f"Temporal Trend - {col}")
+                            plt.xticks(rotation=45)
+                            plt.tight_layout()
+                            base64_uri = _fig_to_base64(fig, f"Temporal Trend - {col}", chart_output_dir)
+                            insight = f"Shows how entries in '{col}' vary over time by {time_col.lower()}."
+                            report_sections.append({
+                                "task_type": task_type,
+                                "columns": columns,
+                                "base64_uri": base64_uri,
+                                "insight": insight
+                            })
+                except Exception as e:
+                    print(f"⚠️ Skipped temporal trend for {col}: {e}")
 
-    for col in datetime_cols:
-        try:
-            # Try parsing as full date
-            temp_parsed = pd.to_datetime(df[col], errors='coerce')
-            if temp_parsed.dt.year.nunique() > 1 or (temp_parsed.dt.year.nunique() == 1 and temp_parsed.dt.year.iloc[0] != 1970):
-                df[col] = temp_parsed
-            else:
-                # Likely year strings, parse as %Y
-                df[col] = pd.to_datetime(df[col], format='%Y', errors='coerce')
-            df["Year"] = df[col].dt.year
-            if df[col].dt.month.notnull().sum() > 0:
-                df["Month"] = df[col].dt.to_period("M")
-                time_col = "Month"
-            else:
-                time_col = "Year"
+        elif task_type == "Geographical Distribution Analysis":
+            col = columns[0] if columns else None
+            if col and col in df.columns:
+                counts = top_n_frequency(df, col, n=top_n)
+                if not counts.empty:
+                    plot_title = f"Top {top_n} {col}"
+                    fig, ax = plt.subplots(figsize=(8, max(4, len(counts)/2)))
+                    sns.barplot(x=counts.values, y=counts.index, orient="h", hue=counts.index, palette="magma", legend=False)
+                    ax.set_title(plot_title)
+                    plt.tight_layout()
+                    base64_uri = _fig_to_base64(fig, plot_title, chart_output_dir)
+                    insight = generate_categorical_insight(counts, col)
+                    report_sections.append({
+                        "task_type": task_type,
+                        "columns": columns,
+                        "base64_uri": base64_uri,
+                        "insight": insight
+                    })
 
-            time_counts = df[time_col].value_counts().sort_index()
-            if time_counts.empty or time_counts.sum() == 0:
-                print(f"[Skipped] No data for temporal trend on {col}")
-                continue
-            fig, ax = plt.subplots(figsize=(10, 5))
-            sns.lineplot(x=time_counts.index.astype(str), y=time_counts.values, marker="o")
-            ax.set_title(f"Temporal Trend based on {col}")
-            plt.xticks(rotation=45)
-            plt.tight_layout()
-            base64_uri = _fig_to_base64(fig, f"Temporal Trend - {col}", chart_output_dir)
-            report_sections.append({
-                "task_type": "Temporal Trend",
-                "columns": [col],
-                "base64_uri": base64_uri,
-                "insight": f"Shows how entries in '{col}' vary over time by {time_col.lower()}."
-            })
-        except Exception as e:
-            print(f"⚠️ Skipped temporal trend for {col}: {e}")
+        elif task_type == "Categorical Distribution Analysis":
+            for col in columns:
+                if col in df.columns:
+                    counts = top_n_frequency(df, col, n=top_n)
+                    if not counts.empty:
+                        plot_title = f"Top {top_n} {col}"
+                        fig, ax = plt.subplots(figsize=(8, max(4, len(counts)/2)))
+                        sns.barplot(x=counts.values, y=counts.index, orient="h", hue=counts.index, palette="magma", legend=False)
+                        ax.set_title(plot_title)
+                        plt.tight_layout()
+                        base64_uri = _fig_to_base64(fig, plot_title, chart_output_dir)
+                        insight = generate_categorical_insight(counts, col)
+                        report_sections.append({
+                            "task_type": task_type,
+                            "columns": [col],
+                            "base64_uri": base64_uri,
+                            "insight": insight
+                        })
+
+        elif task_type == "Comparative Duration Analysis":
+            num_col = 'duration'
+            cat_col = 'type'
+            if num_col in df.columns and cat_col in df.columns:
+                plot_data = df[[num_col, cat_col]].dropna()
+                if not plot_data.empty:
+                    fig, ax = plt.subplots(figsize=(8, 5))
+                    sns.boxplot(x=cat_col, y=num_col, data=plot_data)
+                    ax.set_title(f"Duration by {cat_col}")
+                    plt.tight_layout()
+                    base64_uri = _fig_to_base64(fig, f"Duration by {cat_col}", chart_output_dir)
+                    insight = generate_grouped_insight(plot_data, cat_col, num_col)
+                    report_sections.append({
+                        "task_type": task_type,
+                        "columns": columns,
+                        "base64_uri": base64_uri,
+                        "insight": insight
+                    })
 
     df_info = {"rows": len(df), "cols": len(df.columns)}
     summary_data = _calculate_summary_statistics(df)

@@ -3,6 +3,10 @@ import os
 from datetime import datetime
 import pandas as pd
 import numpy as np # For numpy_encoder dependency
+import matplotlib.pyplot as plt
+import seaborn as sns
+import re
+from adaptive_eda_executor import top_n_frequency, _fig_to_base64
 
 # Helper function for NumPy JSON serialization (Must be available here too)
 def numpy_encoder(obj):
@@ -28,6 +32,19 @@ def save_final_markdown_report(report_text: str, output_path: str):
         print(f"[Report] Final narrative report saved successfully to: {output_path}")
     except Exception as e:
         print(f"⚠️ Failed to save final markdown report: {e}")
+
+def generate_final_report(data_prep_plan: dict, eda_plan: dict, eda_results: dict, output_dir: str) -> str:
+    """
+    Generates the final narrative report by calling Gemini with all inputs.
+    """
+    eda_results_markdown = eda_results.get("markdown_with_base64", "")
+    summary_statistics = eda_results.get("summary_statistics", {})
+
+    final_report = gemini_generate_final_report(
+        data_prep_plan, eda_plan, eda_results_markdown, summary_statistics, output_dir
+    )
+
+    return final_report
 
 def generate_report(original_df, cleaned_df, data_prep_plan, eda_plan, output_path: str):
     """
