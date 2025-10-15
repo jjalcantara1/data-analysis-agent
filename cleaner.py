@@ -13,23 +13,31 @@ def execute_explode(df: pd.DataFrame, col: str, delimiter: str):
 
     print(f"[Auto-clean] Exploding column: {col} with delimiter '{delimiter}'")
     
-    # Safely split, strip whitespace, and handle nan/empty strings
     df[col] = df[col].apply(
         lambda x: [v.strip() for v in str(x).split(delimiter) if v.strip() != ''] 
         if pd.notna(x) and isinstance(x, str) and delimiter in str(x) else [x]
     )
     
-    # Flatten single-element lists that weren't split
     df[col] = df[col].apply(lambda x: x[0] if isinstance(x, list) and len(x) == 1 else x)
     
     df = df.explode(col).reset_index(drop=True)
     return df
 
 def execute_parse_date(df: pd.DataFrame, col: str, date_format: str):
-    """Parse a date column using a specified format."""
+    """Parse a date column using a specified format, with fallback to inference."""
     if col in df.columns:
         print(f"[Auto-clean] Parsing date column: {col} with format '{date_format}'")
-        df[col] = pd.to_datetime(df[col], format=date_format, errors="coerce")
+        parsed_with_format = pd.to_datetime(df[col], format=date_format, errors="coerce")
+        # Check if parsing succeeded for more than 50% of values
+        success_rate = parsed_with_format.notnull().sum() / len(df[col])
+        if success_rate > 0.5:
+            df[col] = parsed_with_format
+            print(f"[Auto-clean] Successfully parsed {col} with format '{date_format}' (success rate: {success_rate:.2%})")
+        else:
+            print(f"[Auto-clean] Format '{date_format}' failed (success rate: {success_rate:.2%}), falling back to inference.")
+            df[col] = pd.to_datetime(df[col], errors="coerce")
+            fallback_success = df[col].notnull().sum() / len(df[col])
+            print(f"[Auto-clean] Fallback parsing succeeded for {fallback_success:.2%} of values.")
     return df
 
 def execute_convert_numeric(df: pd.DataFrame, col: str):
@@ -39,12 +47,10 @@ def execute_convert_numeric(df: pd.DataFrame, col: str):
     if col in df.columns and df[col].dtype == "object":
         print(f"[Auto-clean] Converting numeric column: {col}")
         
-        # Handle common numeric string formats like '4+' by removing the '+'
         if df[col].astype(str).str.contains(r"\d+\s*\+", regex=True).any():
             print(f"  [Auto-clean] Handling numeric plus sign (+) by removing it in column: {col}")
             df[col] = df[col].astype(str).str.replace("+", "", regex=False)
         
-        # Aggressively remove common non-numeric characters (currency, commas)
         cleaned = df[col].astype(str).str.replace(r"[^\d\.\-]", "", regex=True)
         numeric_series = pd.to_numeric(cleaned, errors="coerce")
         df[col] = numeric_series
@@ -72,14 +78,11 @@ def parse_duration_safe(val):
 def auto_clean(df: pd.DataFrame, data_prep_plan: dict) -> pd.DataFrame:
     df = df.copy()
     
-    # General cleaning: strip whitespace from object columns
     for col in df.select_dtypes(include="object"):
         df[col] = df[col].apply(lambda x: x.strip() if isinstance(x, str) else x)
 
-    # General cleaning: drop exact duplicates
     df = df.drop_duplicates()
     
-    # Execute Gemini's Data Preparation Plan tasks
     for task in data_prep_plan.get("data_prep", []):
         col = task.get("column")
         task_type = task.get("task")
@@ -94,7 +97,6 @@ def auto_clean(df: pd.DataFrame, data_prep_plan: dict) -> pd.DataFrame:
         elif task_type == "convert_numeric":
             df = execute_convert_numeric(df, col)
 
-    # Specific cleaning for 'duration' column (if present)
     if "duration" in df.columns:
         parsed_data = df["duration"].apply(parse_duration_safe)
         

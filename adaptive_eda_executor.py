@@ -10,10 +10,7 @@ import re
 
 sns.set(style="whitegrid")
 
-# --- GLOBAL SETTINGS ---
 TOP_N_LIMIT = 10
-
-# --- UTILITY FUNCTIONS ---
 
 def _fig_to_base64(fig: plt.Figure, chart_title: str, chart_output_dir: str) -> str:
     """Save Matplotlib figure and return clean placeholder text for Markdown."""
@@ -45,8 +42,6 @@ def _calculate_summary_statistics(df: pd.DataFrame) -> dict:
             }
     return summary_data
 
-
-# --- INSIGHT GENERATORS ---
 
 def generate_numeric_insight(series: pd.Series, col: str) -> str:
     if series.empty:
@@ -84,9 +79,6 @@ def generate_correlation_insight(corr_matrix: pd.DataFrame) -> str:
     val = corr_series.loc[idx_max]
     return f"Strongest correlation is between '{idx_max[0]}' and '{idx_max[1]}' (r={val:.2f})."
 
-
-# --- MARKDOWN REPORT BUILDER ---
-
 def _build_final_markdown_report(report_sections: list, df_info: dict, chart_output_dir: str = "charts") -> str:
     markdown = f"""# Comprehensive EDA Report
 
@@ -114,8 +106,6 @@ def _build_final_markdown_report(report_sections: list, df_info: dict, chart_out
     return markdown
 
 
-# --- HELPER: Top N Frequencies ---
-
 def top_n_frequency(df, col, n=TOP_N_LIMIT, multi_sep=None):
     """Handles multi-value or normal categorical frequency extraction."""
     if col not in df.columns:
@@ -129,18 +119,15 @@ def top_n_frequency(df, col, n=TOP_N_LIMIT, multi_sep=None):
     return counts
 
 
-# --- MAIN ADAPTIVE EDA EXECUTION FUNCTION ---
 
 def adaptive_eda_executor(df: pd.DataFrame, eda_plan: dict, output_dir="eda_outputs", top_n=TOP_N_LIMIT, chart_output_dir=None):
     if chart_output_dir is None:
         chart_output_dir = os.path.join(output_dir, "charts")
     os.makedirs(chart_output_dir, exist_ok=True)
 
-    # --- Detect column types dynamically ---
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
     categorical_cols = df.select_dtypes(exclude=[np.number]).columns.tolist()
 
-    # --- Temporal columns ---
     datetime_cols = []
     for col in df.columns:
         try:
@@ -155,7 +142,6 @@ def adaptive_eda_executor(df: pd.DataFrame, eda_plan: dict, output_dir="eda_outp
 
     report_sections = []
 
-    # --- HISTOGRAMS & KDE ---
     for col in numeric_cols:
         numeric = df[col].dropna()
         if numeric.empty:
@@ -173,10 +159,9 @@ def adaptive_eda_executor(df: pd.DataFrame, eda_plan: dict, output_dir="eda_outp
             "insight": generate_numeric_insight(numeric, col)
         })
 
-    # --- TOP N CATEGORICAL ---
     for col in categorical_cols:
         counts = top_n_frequency(df, col, n=top_n)
-        if counts.empty:
+        if counts.empty or counts.sum() == 0:
             continue
         plot_title = f"Top {top_n} {col}"
         fig, ax = plt.subplots(figsize=(8, max(4, len(counts)/2)))
@@ -191,7 +176,6 @@ def adaptive_eda_executor(df: pd.DataFrame, eda_plan: dict, output_dir="eda_outp
             "insight": generate_categorical_insight(counts, col)
         })
 
-    # --- CORRELATION HEATMAP ---
     if len(numeric_cols) > 1:
         corr = df[numeric_cols].corr(numeric_only=True)
         fig, ax = plt.subplots(figsize=(10, 8))
@@ -206,10 +190,15 @@ def adaptive_eda_executor(df: pd.DataFrame, eda_plan: dict, output_dir="eda_outp
             "insight": generate_correlation_insight(corr)
         })
 
-    # --- TEMPORAL TRENDS ---
     for col in datetime_cols:
         try:
-            df[col] = pd.to_datetime(df[col], errors='coerce')
+            # Try parsing as full date
+            temp_parsed = pd.to_datetime(df[col], errors='coerce')
+            if temp_parsed.dt.year.nunique() > 1 or (temp_parsed.dt.year.nunique() == 1 and temp_parsed.dt.year.iloc[0] != 1970):
+                df[col] = temp_parsed
+            else:
+                # Likely year strings, parse as %Y
+                df[col] = pd.to_datetime(df[col], format='%Y', errors='coerce')
             df["Year"] = df[col].dt.year
             if df[col].dt.month.notnull().sum() > 0:
                 df["Month"] = df[col].dt.to_period("M")
@@ -218,6 +207,9 @@ def adaptive_eda_executor(df: pd.DataFrame, eda_plan: dict, output_dir="eda_outp
                 time_col = "Year"
 
             time_counts = df[time_col].value_counts().sort_index()
+            if time_counts.empty or time_counts.sum() == 0:
+                print(f"[Skipped] No data for temporal trend on {col}")
+                continue
             fig, ax = plt.subplots(figsize=(10, 5))
             sns.lineplot(x=time_counts.index.astype(str), y=time_counts.values, marker="o")
             ax.set_title(f"Temporal Trend based on {col}")
@@ -233,7 +225,6 @@ def adaptive_eda_executor(df: pd.DataFrame, eda_plan: dict, output_dir="eda_outp
         except Exception as e:
             print(f"⚠️ Skipped temporal trend for {col}: {e}")
 
-    # --- FINAL REPORT GENERATION ---
     df_info = {"rows": len(df), "cols": len(df.columns)}
     summary_data = _calculate_summary_statistics(df)
     final_markdown = _build_final_markdown_report(report_sections, df_info, chart_output_dir)
