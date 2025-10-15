@@ -9,4 +9,4 @@ def save_final_markdown_report(report_text: str, output_path: str):
             f.write(report_text)
         print(f"[Report] Final narrative report saved successfully to: {output_path}")
     except Exception as e:
-        print(f"⚠️ Failed to save final markdown report: {e}")
+        print(f"Failed to save final markdown report: {e}")

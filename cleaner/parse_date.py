@@ -5,7 +5,6 @@ def execute_parse_date(df: pd.DataFrame, col: str, date_format: str):
     if col in df.columns:
         print(f"[Auto-clean] Parsing date column: {col} with format '{date_format}'")
         parsed_with_format = pd.to_datetime(df[col], format=date_format, errors="coerce")
-        # Check if parsing succeeded for more than 50% of values
         success_rate = parsed_with_format.notnull().sum() / len(df[col])
         if success_rate > 0.5:
             df[col] = parsed_with_format

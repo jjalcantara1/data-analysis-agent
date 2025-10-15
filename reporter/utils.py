@@ -10,7 +10,6 @@ def numpy_encoder(obj):
         return float(obj)
     elif isinstance(obj, np.bool_):
         return bool(obj)
-    # Handle pandas types not covered by np types
     if isinstance(obj, pd.Series) or isinstance(obj, pd.Index):
         return obj.tolist()
     return json.JSONEncoder.default(obj)

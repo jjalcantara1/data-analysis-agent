@@ -25,5 +25,4 @@ def generate_report(original_df, cleaned_df, data_prep_plan, eda_plan, output_pa
     }
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     with open(output_path, "w") as f:
-        # Use numpy_encoder for robust JSON serialization
         json.dump(report, f, indent=2, default=numpy_encoder)

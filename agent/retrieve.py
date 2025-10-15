@@ -9,7 +9,6 @@ def retrieve_phase(input_path, output_folder):
         reasoning = f"Failed to load dataset from {input_path}."
         return None, reasoning, 0.0
 
-    # Retrieval action: Parse and summarize data structure
     try:
         data_summary = {
             "columns": list(original_df.columns),

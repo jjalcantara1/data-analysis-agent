@@ -7,13 +7,13 @@ load_dotenv()
 GENAI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 if not GENAI_API_KEY:
-    print("⚠️ GEMINI_API_KEY not found. Using mocked API responses in explain.py.")
+    print("GEMINI_API_KEY not found. Using mocked API responses in explain.py.")
     client = None
 else:
     try:
         client = genai.Client(api_key=GENAI_API_KEY)
     except Exception as e:
-        print(f"⚠️ Gemini Client initialization failed: {e}. Using mocked response in explain.py.")
+        print(f"Gemini Client initialization failed: {e}. Using mocked response in explain.py.")
         client = None
 
 def _generate_gemini_response(prompt: str, json_schema: dict = None) -> dict or str:
@@ -54,9 +54,8 @@ The structured data analysis allowed us to derive specific, actionable recommend
             return json.loads(response.text)
         return response.text
     except Exception as e:
-        print(f"⚠️ Gemini API call failed: {e}")
+        print(f"Gemini API call failed: {e}")
         if json_schema:
-            # Return default empty structure for JSON responses
             if "data_prep" in json_schema.get("properties", {}):
                 return {"data_prep": [], "confidence": 0.5}
             elif "recommended_eda" in json_schema.get("properties", {}):
