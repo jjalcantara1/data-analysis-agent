@@ -5,7 +5,17 @@ def gemini_generate_eda_plan(df: pd.DataFrame) -> tuple[dict, float]:
     """Generates the structured JSON EDA plan with confidence."""
     sample = df.head(5).to_dict(orient="records")
     columns = list(df.columns)
-    prompt = f"You are an expert data analyst. Generate a focused, high-quality EDA plan for the **cleaned** dataset, prioritizing the most important insights over quantity. Focus on key analyses that provide the deepest understanding. Columns: {columns}. Sample rows: {sample}..."
+    supported_types = [
+        "Univariate Analysis",
+        "Temporal Trend Analysis",
+        "Geographical Distribution Analysis",
+        "Categorical Distribution Analysis",
+        "Comparative Duration Analysis",
+        "Distribution Analysis",
+        "Product Category Impact Analysis",
+        "Demographic Distribution Analysis"
+    ]
+    prompt = f"You are an expert data analyst. Generate a focused, high-quality EDA plan for the **cleaned** dataset, prioritizing the most important insights over quantity. Focus on key analyses that provide the deepest understanding. Only use the following supported analysis types: {supported_types}. Columns: {columns}. Sample rows: {sample}..."
     schema = {
         "type": "object",
         "properties": {

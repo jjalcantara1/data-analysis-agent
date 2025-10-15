@@ -157,6 +157,101 @@ def adaptive_eda_executor(df: pd.DataFrame, eda_plan: list, output_dir="eda_outp
                         "insight": insight
                     })
 
+        elif task_type == "Distribution Analysis":
+            col = columns[0] if columns else None
+            if col and col in df.columns:
+                if df[col].dtype in ['object', 'category']:
+                    counts = top_n_frequency(df, col, n=top_n)
+                    if not counts.empty:
+                        plot_title = f"Distribution of {col}"
+                        fig, ax = plt.subplots(figsize=(8, 6))
+                        if len(counts) <= 5:
+                            ax.pie(counts.values, labels=counts.index, autopct='%1.1f%%', startangle=90)
+                            plt.axis('equal')
+                        else:
+                            sns.barplot(x=counts.values, y=counts.index, orient="h", hue=counts.index, palette="magma", legend=False)
+                        ax.set_title(plot_title)
+                        plt.tight_layout()
+                        base64_uri = _fig_to_base64(fig, plot_title, chart_output_dir)
+                        insight = generate_categorical_insight(counts, col)
+                        report_sections.append({
+                            "task_type": task_type,
+                            "columns": columns,
+                            "base64_uri": base64_uri,
+                            "insight": insight
+                        })
+                elif df[col].dtype in ['int64', 'float64']:
+                    numeric = df[col].dropna()
+                    if not numeric.empty:
+                        plot_title = f"Histogram of {col}"
+                        fig, ax = plt.subplots(figsize=(8, 5))
+                        sns.histplot(numeric, kde=True, bins=min(50, numeric.nunique()))
+                        ax.set_title(plot_title)
+                        plt.tight_layout()
+                        base64_uri = _fig_to_base64(fig, plot_title, chart_output_dir)
+                        insight = generate_numeric_insight(numeric, col)
+                        report_sections.append({
+                            "task_type": task_type,
+                            "columns": columns,
+                            "base64_uri": base64_uri,
+                            "insight": insight
+                        })
+
+        elif task_type == "Product Category Impact Analysis":
+            for col in columns:
+                if col in df.columns:
+                    counts = top_n_frequency(df, col, n=top_n)
+                    if not counts.empty:
+                        plot_title = f"Distribution of {col}"
+                        fig, ax = plt.subplots(figsize=(8, max(4, len(counts)/2)))
+                        sns.barplot(x=counts.values, y=counts.index, orient="h", hue=counts.index, palette="magma", legend=False)
+                        ax.set_title(plot_title)
+                        plt.tight_layout()
+                        base64_uri = _fig_to_base64(fig, plot_title, chart_output_dir)
+                        insight = generate_categorical_insight(counts, col)
+                        report_sections.append({
+                            "task_type": task_type,
+                            "columns": [col],
+                            "base64_uri": base64_uri,
+                            "insight": insight
+                        })
+
+        elif task_type == "Demographic Distribution Analysis":
+            for col in columns:
+                if col in df.columns:
+                    if df[col].dtype in ['object', 'category']:
+                        counts = top_n_frequency(df, col, n=top_n)
+                        if not counts.empty:
+                            plot_title = f"Distribution of {col}"
+                            fig, ax = plt.subplots(figsize=(8, max(4, len(counts)/2)))
+                            sns.barplot(x=counts.values, y=counts.index, orient="h", hue=counts.index, palette="magma", legend=False)
+                            ax.set_title(plot_title)
+                            plt.tight_layout()
+                            base64_uri = _fig_to_base64(fig, plot_title, chart_output_dir)
+                            insight = generate_categorical_insight(counts, col)
+                            report_sections.append({
+                                "task_type": task_type,
+                                "columns": [col],
+                                "base64_uri": base64_uri,
+                                "insight": insight
+                            })
+                    elif df[col].dtype in ['int64', 'float64']:
+                        numeric = df[col].dropna()
+                        if not numeric.empty:
+                            plot_title = f"Distribution of {col}"
+                            fig, ax = plt.subplots(figsize=(8, 5))
+                            sns.histplot(numeric, kde=True, bins=min(50, numeric.nunique()))
+                            ax.set_title(plot_title)
+                            plt.tight_layout()
+                            base64_uri = _fig_to_base64(fig, plot_title, chart_output_dir)
+                            insight = generate_numeric_insight(numeric, col)
+                            report_sections.append({
+                                "task_type": task_type,
+                                "columns": [col],
+                                "base64_uri": base64_uri,
+                                "insight": insight
+                            })
+
     df_info = {"rows": len(df), "cols": len(df.columns)}
     summary_data = _calculate_summary_statistics(df)
     final_markdown = _build_final_markdown_report(report_sections, df_info, chart_output_dir)

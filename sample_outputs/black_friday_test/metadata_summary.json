@@ -1,0 +1,56 @@
+{
+  "metadata": {
+    "original_shape": [
+      550068,
+      12
+    ],
+    "cleaned_shape": [
+      550068,
+      12
+    ],
+    "retrieved_at": "2025-10-16T00:29:49.016341"
+  },
+  "cleaning_summary": {
+    "duplicates_removed": 0,
+    "columns_converted": []
+  },
+  "data_prep_plan": [
+    {
+      "column": "Stay_In_Current_City_Years",
+      "task": "convert_numeric",
+      "reason": "The column contains string values like '4+' which need to be converted to a numeric format (e.g., '4') to enable numerical analysis."
+    }
+  ],
+  "eda_plan": [
+    {
+      "type": "Distribution Analysis",
+      "reason": "To understand the overall spending patterns, identify typical purchase amounts, and detect any outliers or skewed distributions in customer spending.",
+      "columns": [
+        "Purchase"
+      ]
+    },
+    {
+      "type": "Product Category Impact Analysis",
+      "reason": "To identify which product categories are most popular and contribute significantly to total sales, guiding inventory management and marketing strategies.",
+      "columns": [
+        "Product_Category_1",
+        "Product_Category_2",
+        "Product_Category_3",
+        "Purchase"
+      ]
+    },
+    {
+      "type": "Categorical Distribution Analysis",
+      "reason": "To understand how different demographic segments (gender, age, occupation, city, marital status, years in city) influence purchase behavior and identify high-value customer groups for targeted marketing.",
+      "columns": [
+        "Gender",
+        "Age",
+        "Occupation",
+        "City_Category",
+        "Stay_In_Current_City_Years",
+        "Marital_Status",
+        "Purchase"
+      ]
+    }
+  ]
+}
