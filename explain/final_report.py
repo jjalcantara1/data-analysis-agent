@@ -45,9 +45,9 @@ def _process_markdown_and_save_charts(markdown_text: str, output_dir: str) -> st
 
     cleaned_markdown = re.sub(corrupted_base64_pattern, replace_corrupted_tag, cleaned_markdown, flags=re.S)
 
-    note = "\n\n---\n\n**NOTE:** All charts are generated and saved as separate PNG files in the `./charts/` directory. The report refers to them by their title (e.g., ![Gender Distribution](charts/gender_distribution.png))."
+    # note = "\n\n---\n\n**NOTE:** All charts are generated and saved as separate PNG files in the `./charts/` directory. The report refers to them by their title (e.g., ![Gender Distribution](charts/gender_distribution.png))."
 
-    return cleaned_markdown + note
+    return cleaned_markdown 
 
 def gemini_generate_final_report(data_prep_plan: dict, eda_plan: dict, eda_results_markdown: str, summary_statistics: dict, output_dir: str) -> str:
     """
